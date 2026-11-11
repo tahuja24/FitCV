@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FitCV – ATS Resume Builder & Keyword Matcher</title>
+<style>
+:root{--bg:#f5f6f7;--card:#fff;--tx:#1a1d21;--mu:#606872;--bd:#d8dce0;--ac:#b4236b;--acx:#fff;--bad:#c0392b;--ok:#1c7a4a;--warn:#b45f06}
+@media(prefers-color-scheme:dark){:root{--bg:#121416;--card:#1b1e22;--tx:#e9ecef;--mu:#9aa3ad;--bd:#2d3238;--ac:#ff7eb6;--acx:#2a0716;--bad:#ff8a7a;--ok:#6fd3a0;--warn:#f0b35a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+header,main{max-width:1200px;margin:0 auto;padding:14px 20px}
+h1{font:700 1.8rem/1.2 Georgia,serif;margin:0}
+h2{font:600 1.05rem Georgia,serif;margin:14px 0 6px}
+.sub,small{color:var(--mu)}
+.sub{margin:2px 0 0}
+small{font-size:12px}
+.layout{display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);align-items:start}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.box{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:14px}
+label{display:block;font-weight:600;font-size:13px;margin-bottom:8px}
+input,textarea{width:100%;font:inherit;color:var(--tx);padding:7px 8px;border-radius:6px;border:1px solid var(--bd);background:var(--bg);margin-top:3px}
+textarea{min-height:64px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{font:inherit;color:var(--tx);padding:7px 12px;border-radius:6px;border:1px solid var(--bd);background:var(--card);cursor:pointer}
+button.p,.tabs button[aria-pressed=true]{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.tabs,.bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.item{border:1px solid var(--bd);border-radius:6px;padding:10px;margin-bottom:8px}
+.score{display:flex;align-items:center;gap:14px;margin:6px 0 10px}
+.score b{font:700 2.6rem/1 Georgia,serif}
+.meter{flex:1;height:10px;background:var(--bd);border-radius:5px;overflow:hidden}
+.meter i{display:block;height:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:2px 10px;border-radius:99px;font-size:13px;border:1px solid var(--ok);color:var(--ok)}
+button.chip{background:none;cursor:pointer;border-color:var(--bad);color:var(--bad)}
+.ck{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd);font-size:14px}
+.ck i{font-style:normal;font-weight:700;width:18px}
+.ck.y i{color:var(--ok)}.ck.n i{color:var(--bad)}
+#paper{background:#fff;color:#111;font:12px/1.45 Arial,Helvetica,sans-serif;padding:26px 30px;border:1px solid var(--bd)}
+#paper h3{margin:0;font:700 22px Arial,sans-serif;text-align:center}
+#paper .ct{text-align:center;margin:2px 0 8px;color:#333}
+#paper h4{margin:12px 0 4px;font:700 12px Arial,sans-serif;text-transform:uppercase;border-bottom:1px solid #111;letter-spacing:.5px}
+#paper .hd{display:flex;justify-content:space-between;font-weight:700}
+#paper ul{margin:2px 0 6px;padding-left:18px}
+[hidden]{display:none!important}
+@media print{header,.form,.tabs,#matchView,.noprint{display:none!important}body{background:#fff}main{padding:0}.layout{display:block}#previewView{display:block!important;border:0;padding:0}#paper{border:0;padding:0}}
+</style>
+</head>
+<body>
+<header>
+  <h1>FitCV</h1>
+  <p class="sub">Build an ATS-friendly resume, then paste a job description to see which keywords you match and which you are missing.</p>
+</header>
+<main class="layout">
+  <section class="box form" id="form" aria-label="Resume editor"></section>
+  <section>
+    <div class="tabs"><button data-tab="m" aria-pressed="true">Job match</button><button data-tab="p" aria-pressed="false">Resume preview</button></div>
+    <div class="box" id="matchView">
+      <label>Job description<textarea id="jd" style="min-height:130px" placeholder="Paste the job description here"></textarea></label>
+      <div id="matchOut"></div>
+    </div>
+    <div class="box" id="previewView" hidden>
+      <div class="bar noprint"><button class="p" id="print">Print or save as PDF</button><small style="align-self:center">Single column, standard headings and plain fonts, which ATS software reads reliably.</small></div>
+      <div id="paper"></div>
+    </div>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const STOP=new Set("about above across also able after again all and any are around been being between both but can candidate candidates company could does each etc from have has had here into join just like looking more most must need new not only other our out over per plus position role seeking should some such than that the their them then there these they this those through too under until use used using very want well were what when where which while will with within would year years your you work working team teams ability knowledge understanding experience skills required requirements preferred responsibilities qualifications strong good great job including include includes etc".split(" "));
+const SKILLS=["javascript","typescript","python","java","c++","c#","sql","nosql","html","css","react","angular","vue","node.js","express","django","flask","spring","git","github","docker","kubernetes","aws","azure","linux","rest api","graphql","mongodb","postgresql","mysql","redis","machine learning","deep learning","data structures","algorithms","tensorflow","pytorch","pandas","numpy","excel","tableau","power bi","agile","scrum","jira","figma","ci/cd","unit testing","testing","communication","leadership","problem solving","teamwork","responsive design","accessibility","tailwind","sass","api","oop","data analysis","statistics","devops","microservices","cloud","android","ios","kotlin","swift","flutter","php","nlp","performance","version control"];
+const ALIAS=[["javascript","js"],["machine learning","ml"],["node.js","nodejs","node"],["react","reactjs","react.js"],["kubernetes","k8s"],["postgresql","postgres"],["aws","amazon web services"],["ci/cd","continuous integration"],["unit testing","unit tests"],["rest api","restful","rest apis"],["oop","object-oriented","object oriented"],["teamwork","collaboration","collaborated"],["responsive design","responsive"],["version control","git"]];
+const VERBS=new Set("built developed designed implemented created led managed improved reduced increased optimized launched delivered automated analyzed collaborated deployed integrated migrated refactored tested wrote organized mentored presented researched streamlined engineered maintained resolved coordinated achieved drove established initiated supported trained configured documented debugged enhanced executed planned secured scaled shipped spearheaded owned produced generated contributed participated served won earned applied conducted prepared".split(" "));
+
+const SAMPLE={name:"Aanya Sharma",email:"aanya.sharma@example.com",phone:"+91 98765 43210",link:"github.com/aanya-demo",loc:"Delhi, India",
+summary:"Final-year computer science student who enjoys building clean, fast web interfaces. Experience with React projects, hackathons and teaching peers.",
+skills:"JavaScript, React, HTML, CSS, Git, Python, Node.js, SQL",
+exp:[{role:"Web Development Intern",org:"BrightLeaf Studio",dates:"Jun 2025 – Aug 2025",bullets:"Built 6 reusable React components used across 3 client websites\nReduced page load time by 35% by compressing images and lazy loading\nCollaborated with 2 designers to ship a new landing page in 2 weeks"},
+{role:"Club Technical Lead",org:"Coding Society",dates:"Aug 2024 – Present",bullets:"Led a team of 8 members to organise 4 workshops with 300+ attendees\nMentored 15 juniors on Git and JavaScript fundamentals"}],
+proj:[{name:"Budget Buddy",tech:"React, Node.js, SQL",bullets:"Developed a budgeting web app with charts and monthly reports\nDeployed the app on Vercel and used by 50+ classmates"}],
+edu:[{school:"Example Institute of Technology",degree:"B.Tech, Computer Science",dates:"2022 – 2026"}]};
+const SAMPLE_JD="Frontend Developer Intern\nWe are looking for a frontend intern to build fast, accessible web interfaces. You will work with React and TypeScript, write clean HTML and CSS, and use Git for version control. Responsibilities include building responsive design layouts, consuming REST API endpoints, writing unit testing for components, and improving performance. You will work in an agile team with strong communication and problem solving skills. Knowledge of accessibility standards and Figma is a plus. React experience is essential.";
+
+let R=JSON.parse(JSON.stringify(SAMPLE)),JD=SAMPLE_JD;
+try{const x=JSON.parse(localStorage.getItem("fitcv-v1"));if(x&&x.R){R=x.R;JD=x.JD||""}}catch(e){}
+const save=()=>{try{localStorage.setItem("fitcv-v1",JSON.stringify({R,JD}))}catch(e){}};
+const EMPTY={name:"",email:"",phone:"",link:"",loc:"",summary:"",skills:"",exp:[],proj:[],edu:[]};
+
+const group=t=>ALIAS.find(g=>g.includes(t))||[t];
+const reOf=t=>new RegExp("(^|[^a-z0-9+#])(?:"+group(t).map(v=>v.replace(/[.*+?^${}()|[\]\\\/]/g,"\\$&")).join("|")+")(?:s|es|ed|ing)?(?![a-z0-9+#])","g");
+const count=(txt,t)=>(txt.match(reOf(t))||[]).length;
+
+function keywords(jd){
+  const low=jd.toLowerCase(),map=new Map();
+  SKILLS.forEach(s=>{const n=count(low,s);if(n)map.set(s,3+n)});
+  const toks=low.match(/[a-z][a-z0-9+#.]*[a-z0-9+#]|[a-z]/g)||[],uni={},bi={};
+  toks.forEach((w,i)=>{
+    if(STOP.has(w)||w.length<4)return;
+    uni[w]=(uni[w]||0)+1;
+    const n=toks[i+1];
+    if(n&&!STOP.has(n)&&n.length>=4){const b=w+" "+n;bi[b]=(bi[b]||0)+1}
+  });
+  const have=k=>[...map.keys()].some(x=>x.includes(k)||k.includes(x));
+  Object.entries(bi).forEach(([b,n])=>{if(n>=2&&!have(b))map.set(b,n*1.5)});
+  Object.entries(uni).forEach(([w,n])=>{if(n>=2&&!have(w))map.set(w,n)});
+  return [...map].sort((a,b)=>b[1]-a[1]).slice(0,25);
+}
+
+const bullets=()=>[...R.exp,...R.proj].flatMap(x=>(x.bullets||"").split("\n").map(b=>b.replace(/^[\s•\-*]+/,"").trim()).filter(Boolean));
+const resumeText=()=>JSON.stringify(R).toLowerCase().replace(/\\n/g," ");
+const words=s=>(s.trim().match(/\S+/g)||[]).length;
+
+function checks(){
+  const b=bullets(),n=Math.max(1,b.length),sm=words(R.summary||""),sk=R.skills.split(",").filter(x=>x.trim()).length;
+  const av=b.filter(x=>VERBS.has(x.split(/\s+/)[0].toLowerCase())).length/n;
+  const q=b.filter(x=>/\d/.test(x)).length/n;
+  const long=b.filter(x=>words(x)>30).length;
+  return [
+    [!!(R.email&&R.phone),"Email and phone are present","Add both an email and a phone number so recruiters can reach you."],
+    [sm>=20&&sm<=60,"Summary is 20 to 60 words",`Your summary has ${sm} words. Aim for 2 to 3 short sentences.`],
+    [sk>=6,"Skills section lists 6 or more skills","List the tools and technologies you actually use, separated by commas."],
+    [b.length>=4&&av>=.7,"Most bullets start with an action verb",`${Math.round(av*100)}% of your bullets start with one. Begin with words like Built, Led or Reduced.`],
+    [q>=.4,"Bullets include numbers","Only "+Math.round(q*100)+"% of bullets have a number. Add sizes, percentages or counts."],
+    [long===0,"No bullet is longer than 30 words",`${long} bullet${long>1?"s are":" is"} too long. Split or trim them.`],
+    [R.edu.length>0,"Education is listed","Add your degree and dates."],
+    [words(resumeText())<=700,"Fits on about one page","Trim older or less relevant details to stay near one page."]
+  ];
+}
+
+function renderMatch(){
+  let h="";
+  const cs=checks(),pass=cs.filter(c=>c[0]).length;
+  if(JD.trim().length<30){h='<p class="sub">Paste a job description above to see your keyword match.</p>'}
+  else{
+    const kws=keywords(JD),txt=resumeText();
+    const hit=kws.filter(k=>count(txt,k[0])>0),miss=kws.filter(k=>!hit.includes(k));
+    const tot=kws.reduce((a,k)=>a+k[1],0)||1,score=Math.round(hit.reduce((a,k)=>a+k[1],0)/tot*100);
+    const col=score>=75?"var(--ok)":score>=50?"var(--warn)":"var(--bad)";
+    h=`<div class="score"><b style="color:${col}">${score}%</b><div style="flex:1"><div class="meter"><i style="width:${score}%;background:${col}"></i></div><small>${score>=75?"Strong match":score>=50?"Partial match: add the missing keywords you genuinely have":"Low match: this role needs skills your resume does not show yet"}</small></div></div>
+    <h2>Matched (${hit.length})</h2><div class="chips">${hit.map(k=>`<span class="chip">${esc(k[0])}</span>`).join("")||"<small>None yet</small>"}</div>
+    <h2>Missing (${miss.length})</h2><div class="chips">${miss.map(k=>`<button class="chip" data-add="${esc(k[0])}" title="Add to your skills">+ ${esc(k[0])}</button>`).join("")||"<small>Nothing missing. Nice.</small>"}</div>
+    <small>Only add skills you really have. Click a missing keyword to add it to your Skills list.</small>`;
+  }
+  h+=`<h2>Resume checks (${pass}/${cs.length} passed)</h2>`+cs.map(c=>`<div class="ck ${c[0]?"y":"n"}"><i>${c[0]?"✓":"✗"}</i><span>${c[0]?c[1]:c[2]}</span></div>`).join("");
+  $("matchOut").innerHTML=h;
+}
+
+function renderPaper(){
+  const li=b=>(b||"").split("\n").map(x=>x.replace(/^[\s•\-*]+/,"").trim()).filter(Boolean).map(x=>`<li>${esc(x)}</li>`).join("");
+  const ct=[R.email,R.phone,R.loc,R.link].filter(Boolean).map(esc).join(" | ");
+  let h=`<h3>${esc(R.name)||"Your Name"}</h3><div class="ct">${ct}</div>`;
+  if(R.summary)h+=`<h4>Summary</h4><div>${esc(R.summary)}</div>`;
+  if(R.skills.trim())h+=`<h4>Skills</h4><div>${esc(R.skills)}</div>`;
+  if(R.exp.length)h+=`<h4>Experience</h4>`+R.exp.map(x=>`<div class="hd"><span>${esc(x.role)}${x.org?", "+esc(x.org):""}</span><span>${esc(x.dates)}</span></div><ul>${li(x.bullets)}</ul>`).join("");
+  if(R.proj.length)h+=`<h4>Projects</h4>`+R.proj.map(x=>`<div class="hd"><span>${esc(x.name)}</span><span>${esc(x.tech)}</span></div><ul>${li(x.bullets)}</ul>`).join("");
+  if(R.edu.length)h+=`<h4>Education</h4>`+R.edu.map(x=>`<div class="hd"><span>${esc(x.school)}</span><span>${esc(x.dates)}</span></div><div>${esc(x.degree)}</div>`).join("");
+  $("paper").innerHTML=h;
+}
+const out=()=>{renderMatch();renderPaper();save()};
+
+const inp=(p,l,v,ta)=>`<label>${l}${ta?`<textarea data-p="${p}">${esc(v)}</textarea>`:`<input data-p="${p}" value="${esc(v)}">`}</label>`;
+function buildForm(){
+  const sec=(k,title,fields,blank)=>`<h2>${title}</h2>`+R[k].map((x,i)=>`<div class="item">${fields(x,i)}<button data-rm="${k}.${i}">Remove</button></div>`).join("")+`<button data-new="${k}">Add ${blank}</button>`;
+  $("form").innerHTML=`<div class="bar"><button data-act="sample">Load sample</button><button data-act="clear">Clear all</button></div>
+  <h2 style="margin-top:0">Contact</h2><div class="two">${inp("name","Full name",R.name)}${inp("loc","Location",R.loc)}${inp("email","Email",R.email)}${inp("phone","Phone",R.phone)}</div>${inp("link","Link (GitHub or LinkedIn)",R.link)}
+  <h2>Summary</h2>${inp("summary","2 to 3 sentences",R.summary,1)}<h2>Skills</h2>${inp("skills","Comma separated",R.skills,1)}`+
+  sec("exp","Experience",(x,i)=>`<div class="two">${inp(`exp.${i}.role`,"Role",x.role)}${inp(`exp.${i}.org`,"Organisation",x.org)}</div>${inp(`exp.${i}.dates`,"Dates",x.dates)}${inp(`exp.${i}.bullets`,"Bullets (one per line)",x.bullets,1)}`,"experience")+
+  sec("proj","Projects",(x,i)=>`<div class="two">${inp(`proj.${i}.name`,"Project name",x.name)}${inp(`proj.${i}.tech`,"Tech used",x.tech)}</div>${inp(`proj.${i}.bullets`,"Bullets (one per line)",x.bullets,1)}`,"project")+
+  sec("edu","Education",(x,i)=>`${inp(`edu.${i}.school`,"School",x.school)}<div class="two">${inp(`edu.${i}.degree`,"Degree",x.degree)}${inp(`edu.${i}.dates`,"Dates",x.dates)}</div>`,"education");
+}
+function setPath(p,v){
+  const a=p.split(".");
+  if(a.length===1)R[a[0]]=v;else R[a[0]][+a[1]][a[2]]=v;
+}
+const blank={exp:{role:"",org:"",dates:"",bullets:""},proj:{name:"",tech:"",bullets:""},edu:{school:"",degree:"",dates:""}};
+
+document.addEventListener("input",e=>{
+  if(e.target.dataset.p){setPath(e.target.dataset.p,e.target.value);out()}
+  else if(e.target.id==="jd"){JD=e.target.value;renderMatch();save()}
+});
+document.addEventListener("click",e=>{
+  const b=e.target.closest("button");if(!b)return;
+  const d=b.dataset;
+  if(d.tab){const m=d.tab==="m";$("matchView").hidden=!m;$("previewView").hidden=m;document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-pressed",x===b))}
+  else if(d.add){R.skills=(R.skills.trim()?R.skills.trim().replace(/,$/,"")+", ":"")+d.add;buildForm();out()}
+  else if(d.new){R[d.new].push({...blank[d.new]});buildForm();out()}
+  else if(d.rm){const[k,i]=d.rm.split(".");R[k].splice(+i,1);buildForm();out()}
+  else if(d.act==="sample"){R=JSON.parse(JSON.stringify(SAMPLE));JD=SAMPLE_JD;$("jd").value=JD;buildForm();out()}
+  else if(d.act==="clear"){if(confirm("Clear the whole resume?")){R=JSON.parse(JSON.stringify(EMPTY));JD="";$("jd").value="";buildForm();out()}}
+  else if(b.id==="print")window.print();
+});
+$("jd").value=JD;buildForm();out();
+</script>
+</body>
+</html>
